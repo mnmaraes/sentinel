@@ -259,7 +259,7 @@ let sessionStart = new Command()
       return;
     }
 
-    createSession(projectName);
+    await createSession(projectName);
     console.log("Session Started! Get to work!");
   });
 
