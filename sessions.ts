@@ -1,23 +1,19 @@
 import { v4 } from "https://deno.land/std/uuid/mod.ts";
-import {
-  ensureFile,
-  readJson,
-  writeJson,
-} from "https://deno.land/std@master/fs/mod.ts";
+import { ensureFile, writeJson } from "https://deno.land/std@master/fs/mod.ts";
 
 import { Input } from "https://deno.land/x/cliffy/prompt.ts";
 
 import { Command } from "https://deno.land/x/cliffy/command.ts";
 
 import {
-  SENTINEL_PATH,
+  SESSIONS_PATH,
   loadWithDefault,
-  loadStore,
   getProject,
-  updateStore,
+  setStore,
+  getOngoingSession,
+  getSessionPath,
+  Session,
 } from "./utils.ts";
-
-const SESSIONS_PATH = SENTINEL_PATH + "/sessions";
 
 type SessionIndex = {
   byProject: { [name: string]: string[] };
@@ -36,34 +32,14 @@ const loadSessionIndex = async (): Promise<SessionIndex> => {
   return loadWithDefault(SESSION_INDEX_PATH, INITIAL_INDEX);
 };
 
-const getSessionPath = (sessionId: string): string => {
-  return `${SESSIONS_PATH}/${sessionId}.json`;
-};
-
-type Session = {
-  id: string;
-  projectName: string;
-  focus: string;
-  sessionStart: number;
-  sessionEnd?: number;
-};
-const getOngoingSession = async (): Promise<Session | null> => {
-  const sessionId = (await loadStore()).ongoingSession;
-  if (sessionId == null) {
-    return null;
-  }
-
-  return (await readJson(getSessionPath(sessionId))) as Session;
-};
-
 const setOngoingSession = async (session: Session): Promise<void> => {
-  return updateStore({
+  return setStore({
     ongoingSession: session.id,
   });
 };
 
 const clearOngoingSession = async (): Promise<void> => {
-  return updateStore({
+  return setStore({
     ongoingSession: undefined,
   });
 };
@@ -139,7 +115,7 @@ const createSession = async (projectName?: string): Promise<Session> => {
   return session;
 };
 
-type SessionOptions = { project?: string };
+// Sub-Commands
 const sessionStart = new Command()
   .version("0.0.1")
   .description("Start a working session")
@@ -147,7 +123,7 @@ const sessionStart = new Command()
     "-p, --project [project:string]",
     "The name of the project to work on"
   )
-  .action(async ({ project: projectName }: SessionOptions) => {
+  .action(async ({ project: projectName }: { project?: string }) => {
     const session = await getOngoingSession();
     if (session != null) {
       console.log("There is an ongoing session. Did you forget to end it?");
@@ -193,6 +169,7 @@ const sessionRecap = new Command()
     );
   });
 
+// Main Command
 export const session = new Command()
   .version("0.0.1")
   .description("Sentinel Session Management")
