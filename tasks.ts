@@ -9,94 +9,24 @@ import {
   CheckboxOption,
 } from "https://deno.land/x/cliffy/prompt.ts";
 import {
-  loadWithDefault,
+  loadTaskIndex,
+  modifyTaskIndex,
+  TaskIndex,
   getOngoingSession,
   getProject,
   Project,
   Task,
-  TASKS_PATH,
   getTasksPath,
-  getTask,
+  hydrateTasks,
+  printTaskGroups,
+  printTask,
+  TaskGroup,
+  groupTasks,
+  flattenTasks,
 } from "./utils.ts";
-
-type TaskIndex = {
-  all: string[];
-  inbox: string[];
-  incomplete: string[];
-  byProject: { [projectName: string]: string[] };
-  byCreationDate: { [date: string]: string[] };
-  byCompletionDate: { [date: string]: string[] };
-};
-
-const TASKS_INDEX_PATH = TASKS_PATH + "/index.json";
-const INITIAL_INDEX: TaskIndex = {
-  all: [],
-  inbox: [],
-  incomplete: [],
-  byProject: {},
-  byCreationDate: {},
-  byCompletionDate: {},
-};
-
-const loadTaskIndex = async (): Promise<TaskIndex> => {
-  return loadWithDefault(TASKS_INDEX_PATH, INITIAL_INDEX);
-};
 
 const promptForTaskDescription = (): Promise<string> => {
   return Input.prompt("Task Description (leave empty to stop): ");
-};
-
-const hydrateTasks = async (taskIds: string[]): Promise<Task[]> => {
-  return Promise.all(
-    taskIds.map((taskId) => {
-      return getTask(taskId);
-    })
-  );
-};
-
-type TaskGroup = { [name: string]: Task[] };
-
-const formatDateTime = (date: number): string => {
-  const dateObject = new Date(date);
-
-  return `${dateObject.toDateString()} ${dateObject.toTimeString()}`;
-};
-
-const groupTasks = (tasks: Task[]): TaskGroup => {
-  return tasks.reduce((acc, task) => {
-    const projectName = task.projectName ?? "inbox";
-
-    return {
-      ...acc,
-      [projectName]: [...(acc[projectName] ?? []), task],
-    };
-  }, {} as TaskGroup);
-};
-
-const printTaskGroups = (grouped: TaskGroup): void => {
-  for (let key in grouped) {
-    console.log(`${styles.bold.open}${key}:${styles.bold.close}`);
-    grouped[key].forEach((task) => printTask(task, "\t"));
-  }
-};
-
-const printTask = (
-  { isDone, description, created, completed }: Task,
-  prepend: string = ""
-) => {
-  const style = isDone ? styles.strikethrough : styles.underline;
-  const formattedCompleted = completed
-    ? `\n${prepend}${styles.dim.open}Completed on: ${formatDateTime(
-        completed
-      )}${styles.dim.close}`
-    : "";
-  console.log(
-    `${prepend}${style.open}${description}${style.close}\n${prepend}${
-      styles.dim.open
-    }Created on: ${formatDateTime(created)}${
-      styles.dim.close
-    }${formattedCompleted}`
-  );
 };
 
 const getAllTasks = async (shouldIncludeDone: boolean): Promise<TaskGroup> => {
@@ -150,18 +80,6 @@ const listProjectTasks = async (
   );
 };
 
-const flatten = (tasks: TaskGroup | Task[]): Task[] => {
-  if (tasks instanceof Array) {
-    return tasks;
-  }
-
-  let options: Task[] = [];
-  for (let key in tasks) {
-    options = [...options, ...tasks[key]];
-  }
-  return options;
-};
-
 const getToggleOptions = (tasks: TaskGroup | Task[]): CheckboxOption[] => {
   if (tasks instanceof Array) {
     return tasks.map(({ description, id, isDone }) => ({
@@ -192,7 +110,7 @@ const getToggleOptions = (tasks: TaskGroup | Task[]): CheckboxOption[] => {
 
 const toggleTasks = async (tasks: TaskGroup | Task[]): Promise<void> => {
   const options = getToggleOptions(tasks);
-  const flatTasks = flatten(tasks);
+  const flatTasks = flattenTasks(tasks);
 
   const checked: string[] = await Checkbox.prompt({
     message: "Toggle Tasks todo/done",
@@ -209,19 +127,9 @@ const toggleTasks = async (tasks: TaskGroup | Task[]): Promise<void> => {
     await writeTask(task);
   }
 
-  modifyIndex((index) => {
+  modifyTaskIndex((index) => {
     toggledTasks.map(reindexTask).forEach((modifier) => modifier(index));
   });
-};
-
-const modifyIndex = async (
-  modifier: (index: TaskIndex) => void
-): Promise<void> => {
-  const index = await loadTaskIndex();
-
-  modifier(index);
-
-  await writeJson(TASKS_INDEX_PATH, index, { spaces: 2 });
 };
 
 const without = <T>(list: T[], item: T): T[] => {
@@ -302,7 +210,7 @@ const saveTask = async (
     projectName: project?.name,
   };
 
-  await modifyIndex(indexTask(task));
+  await modifyTaskIndex(indexTask(task));
 
   await writeTask(task);
 };

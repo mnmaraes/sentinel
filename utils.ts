@@ -4,6 +4,8 @@ import {
   writeJson,
 } from "https://deno.land/std@master/fs/mod.ts";
 
+import { styles } from "https://deno.land/x/ansi_styles/mod.ts";
+
 import { Select, Input } from "https://deno.land/x/cliffy/prompt.ts";
 
 const home = Deno.env.get("HOME");
@@ -251,4 +253,204 @@ export const getTask = async (taskId: string): Promise<Task> => {
 
 export const getTasksPath = (taskId: string): string => {
   return `${TASKS_PATH}/${taskId}.json`;
+};
+
+export type TaskIndex = {
+  all: string[];
+  inbox: string[];
+  incomplete: string[];
+  byProject: { [projectName: string]: string[] };
+  byCreationDate: { [date: string]: string[] };
+  byCompletionDate: { [date: string]: string[] };
+};
+
+const TASKS_INDEX_PATH = TASKS_PATH + "/index.json";
+const INITIAL_TASK_INDEX: TaskIndex = {
+  all: [],
+  inbox: [],
+  incomplete: [],
+  byProject: {},
+  byCreationDate: {},
+  byCompletionDate: {},
+};
+
+export const loadTaskIndex = async (): Promise<TaskIndex> => {
+  return loadWithDefault(TASKS_INDEX_PATH, INITIAL_TASK_INDEX);
+};
+
+export const modifyTaskIndex = async (
+  modifier: (index: TaskIndex) => void
+): Promise<void> => {
+  const index = await loadTaskIndex();
+
+  modifier(index);
+
+  await writeJson(TASKS_INDEX_PATH, index, { spaces: 2 });
+};
+
+export const hydrateTasks = async (taskIds: string[]): Promise<Task[]> => {
+  return Promise.all(
+    taskIds.map((taskId) => {
+      return getTask(taskId);
+    })
+  );
+};
+
+export type TaskGroup = { [name: string]: Task[] };
+
+export const groupTasks = (tasks: Task[]): TaskGroup => {
+  return tasks.reduce((acc, task) => {
+    const projectName = task.projectName ?? "inbox";
+
+    return {
+      ...acc,
+      [projectName]: [...(acc[projectName] ?? []), task],
+    };
+  }, {} as TaskGroup);
+};
+
+export const formatDateTime = (date: number): string => {
+  const dateObject = new Date(date);
+
+  return `${dateObject.toDateString()} ${dateObject.toTimeString()}`;
+};
+
+export const printTaskGroups = (
+  grouped: TaskGroup,
+  prepend: string = ""
+): void => {
+  for (let key in grouped) {
+    console.log(`${prepend}${styles.bold.open}${key}:${styles.bold.close}`);
+    grouped[key].forEach((task) => printTask(task, prepend + "\t"));
+  }
+};
+
+export const printTask = (
+  { isDone, description, created, completed }: Task,
+  prepend: string = ""
+) => {
+  const style = isDone ? styles.strikethrough : styles.underline;
+  const formattedCompleted = completed
+    ? `\n${prepend}${styles.dim.open}Completed on: ${formatDateTime(
+        completed
+      )}${styles.dim.close}`
+    : "";
+  console.log(
+    `${prepend}${style.open}${description}${style.close}\n${prepend}${
+      styles.dim.open
+    }Created on: ${formatDateTime(created)}${
+      styles.dim.close
+    }${formattedCompleted}`
+  );
+};
+
+export const flattenTasks = (tasks: TaskGroup | Task[]): Task[] => {
+  if (tasks instanceof Array) {
+    return tasks;
+  }
+
+  let options: Task[] = [];
+  for (let key in tasks) {
+    options = [...options, ...tasks[key]];
+  }
+  return options;
+};
+
+export type SessionIndex = {
+  byProject: { [name: string]: string[] };
+  byDate: { [date: string]: string[] };
+  ordered: string[];
+};
+
+export const SESSION_INDEX_PATH = SESSIONS_PATH + "/index.json";
+const INITIAL_SESSION_INDEX: SessionIndex = {
+  byProject: {},
+  byDate: {},
+  ordered: [],
+};
+
+export const loadSessionIndex = async (): Promise<SessionIndex> => {
+  return loadWithDefault(SESSION_INDEX_PATH, INITIAL_SESSION_INDEX);
+};
+
+export const getSession = async (sessionId: string): Promise<Session> => {
+  return (await readJson(getSessionPath(sessionId))) as Session;
+};
+
+export const hydrateSessions = async (
+  sessionIds: string[]
+): Promise<Session[]> => {
+  return Promise.all(
+    sessionIds.map((sessionId) => {
+      return getSession(sessionId);
+    })
+  );
+};
+
+const SECOND_MULTIPLIER = 1000;
+const MINUTE_MULTIPLIER = 60 * SECOND_MULTIPLIER;
+const HOUR_MULTIPLIER = 60 * MINUTE_MULTIPLIER;
+
+export const formatDuration = (duration: number): string => {
+  return `${Math.floor(duration / HOUR_MULTIPLIER)}h ${Math.floor(
+    (duration % HOUR_MULTIPLIER) / MINUTE_MULTIPLIER
+  )}m ${Math.floor((duration % MINUTE_MULTIPLIER) / SECOND_MULTIPLIER)}s`;
+};
+
+export const printSessionGroup = (
+  grouped: SessionGroup,
+  prepend: string = ""
+): void => {
+  for (let key in grouped) {
+    console.log(`${prepend}${styles.bold.open}${key}:${styles.bold.close}`);
+    grouped[key].forEach((session) => printSession(session, prepend + "\t"));
+  }
+};
+
+export const printSession = (
+  { focus, sessionStart, sessionEnd }: Session,
+  prepend: string = ""
+) => {
+  console.log(
+    `${prepend}${styles.underline.open}${focus}${
+      styles.underline.close
+    }\n${prepend}${styles.dim.open}Started on: ${
+      styles.dim.close
+    }${formatDateTime(sessionStart)}\n${prepend}${styles.dim.open}Duration: ${
+      styles.dim.close
+    }${formatDuration((sessionEnd ?? Date.now()) - sessionStart)}`
+  );
+};
+
+export type SessionGroup = { [name: string]: Session[] };
+
+export const groupSessions = (sessions: Session[]): SessionGroup => {
+  return sessions.reduce((acc, session) => {
+    return {
+      ...acc,
+      [session.projectName]: [...(acc[session.projectName] ?? []), session],
+    };
+  }, {} as SessionGroup);
+};
+
+export const sumDuration = (sessions: Session[]): number => {
+  return sessions.reduce(
+    (acc, { sessionEnd, sessionStart }) =>
+      acc + (sessionEnd ?? Date.now()) - sessionStart,
+    0
+  );
+};
+
+export const flattenSessions = (
+  sessions: SessionGroup | Session[]
+): Session[] => {
+  if (sessions instanceof Array) {
+    return sessions;
+  }
+
+  let flat: Session[] = [];
+  for (let key in sessions) {
+    flat = [...flat, ...sessions[key]];
+  }
+  return flat;
 };

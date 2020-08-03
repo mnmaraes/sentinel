@@ -6,31 +6,15 @@ import { Input } from "https://deno.land/x/cliffy/prompt.ts";
 import { Command } from "https://deno.land/x/cliffy/command.ts";
 
 import {
-  SESSIONS_PATH,
-  loadWithDefault,
+  loadSessionIndex,
+  SESSION_INDEX_PATH,
   getProject,
   setStore,
   getOngoingSession,
   getSessionPath,
   Session,
+  formatDuration,
 } from "./utils.ts";
-
-type SessionIndex = {
-  byProject: { [name: string]: string[] };
-  byDate: { [date: string]: string[] };
-  ordered: string[];
-};
-
-const SESSION_INDEX_PATH = SESSIONS_PATH + "/index.json";
-const INITIAL_INDEX: SessionIndex = {
-  byProject: {},
-  byDate: {},
-  ordered: [],
-};
-
-const loadSessionIndex = async (): Promise<SessionIndex> => {
-  return loadWithDefault(SESSION_INDEX_PATH, INITIAL_INDEX);
-};
 
 const setOngoingSession = async (session: Session): Promise<void> => {
   return setStore({
@@ -82,18 +66,6 @@ const endSession = async (session: Session): Promise<Session> => {
   await clearOngoingSession();
 
   return session;
-};
-
-const SECOND_MULTIPLIER = 1000;
-const MINUTE_MULTIPLIER = 60 * SECOND_MULTIPLIER;
-const HOUR_MULTIPLIER = 60 * MINUTE_MULTIPLIER;
-
-const formatSessionDuration = (session: Session): string => {
-  let duration = (session.sessionEnd ?? Date.now()) - session.sessionStart;
-
-  return `${Math.floor(duration / HOUR_MULTIPLIER)}h ${Math.floor(
-    (duration % HOUR_MULTIPLIER) / MINUTE_MULTIPLIER
-  )}m ${Math.floor((duration % MINUTE_MULTIPLIER) / SECOND_MULTIPLIER)}s`;
 };
 
 const createSession = async (projectName?: string): Promise<Session> => {
@@ -148,7 +120,9 @@ const sessionEnd = new Command()
     console.log(
       `Good job! Your session has been logged.\nFocus: ${
         session.focus
-      }\nDuration: ${formatSessionDuration(session)}`
+      }\nDuration: ${formatDuration(
+        (session.sessionEnd ?? Date.now()) - session.sessionStart
+      )}`
     );
   });
 
@@ -163,9 +137,9 @@ const sessionRecap = new Command()
     }
 
     console.log(
-      `Current Session\nFocus: ${
-        session.focus
-      }\nDuration: ${formatSessionDuration(session)}`
+      `Current Session\nFocus: ${session.focus}\nDuration: ${formatDuration(
+        (session.sessionEnd ?? Date.now()) - session.sessionStart
+      )}`
     );
   });
 
