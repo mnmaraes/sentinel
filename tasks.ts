@@ -1,14 +1,15 @@
 import { v4 } from "https://deno.land/std/uuid/mod.ts";
 import { Command } from "https://deno.land/x/cliffy/command.ts";
-import { writeJson, ensureFile } from "https://deno.land/std@master/fs/mod.ts";
+import { writeJson, ensureFile } from "https://deno.land/std@0.63.0/fs/mod.ts";
 
-import { styles } from "https://deno.land/x/ansi_styles/mod.ts";
+import { reset, bold } from "https://deno.land/std@0.63.0/fmt/colors.ts";
 import {
   Input,
   Checkbox,
   CheckboxOption,
 } from "https://deno.land/x/cliffy/prompt.ts";
 import {
+  getProjectTasks,
   loadTaskIndex,
   modifyTaskIndex,
   TaskIndex,
@@ -41,21 +42,6 @@ const getInboxTasks = async (shouldIncludeDone: boolean): Promise<Task[]> => {
     shouldIncludeDone
       ? inbox
       : inbox.filter((id) => incomplete.indexOf(id) != -1)
-  );
-};
-
-const getProjectTasks = async (
-  projectName: string,
-  shouldIncludeDone: boolean
-): Promise<Task[]> => {
-  const {
-    byProject: { [projectName]: projectTasks = [] },
-    incomplete,
-  } = await loadTaskIndex();
-  return await hydrateTasks(
-    shouldIncludeDone
-      ? projectTasks
-      : projectTasks.filter((id) => incomplete.indexOf(id) != -1)
   );
 };
 
@@ -92,7 +78,7 @@ const getToggleOptions = (tasks: TaskGroup | Task[]): CheckboxOption[] => {
   const options: CheckboxOption[] = [];
   for (let key in tasks) {
     options.push({
-      name: `${styles.reset.open}${styles.bold.open}${key}${styles.bold.close}${styles.reset.close}`,
+      name: `${reset(bold(key))}`,
       value: key,
       disabled: true,
       icon: false,

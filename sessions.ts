@@ -1,7 +1,8 @@
 import { v4 } from "https://deno.land/std/uuid/mod.ts";
-import { ensureFile, writeJson } from "https://deno.land/std@master/fs/mod.ts";
+import { ensureFile, writeJson } from "https://deno.land/std@0.63.0/fs/mod.ts";
+import { exec, OutputMode } from "https://deno.land/x/exec/mod.ts";
 
-import { Input } from "https://deno.land/x/cliffy/prompt.ts";
+import { Input, Select } from "https://deno.land/x/cliffy/prompt.ts";
 
 import { Command } from "https://deno.land/x/cliffy/command.ts";
 
@@ -14,6 +15,7 @@ import {
   getSessionPath,
   Session,
   formatDuration,
+  getProjectTasks,
 } from "./utils.ts";
 
 const setOngoingSession = async (session: Session): Promise<void> => {
@@ -68,12 +70,22 @@ const endSession = async (session: Session): Promise<Session> => {
   return session;
 };
 
-const createSession = async (projectName?: string): Promise<Session> => {
+const createSession = async (
+  runHook: boolean,
+  projectName?: string
+): Promise<Session> => {
   const project = await getProject(projectName);
-  // TODO: Can list the project's tasks
-  const focus: string = await Input.prompt(
-    "What will be the focus of this session?"
-  );
+  const tasks = await getProjectTasks(project.name);
+  let focus = await Select.prompt({
+    message: "Select a task to focus on",
+    options: [
+      ...tasks.map(({ description }) => description),
+      "Create a new task",
+    ],
+  });
+
+  if (focus === "Create a new task")
+    focus = await Input.prompt("What will be the focus of this session?");
 
   const session = {
     id: v4.generate(),
@@ -84,6 +96,10 @@ const createSession = async (projectName?: string): Promise<Session> => {
 
   await saveSession(session);
 
+  if (project.onStart && runHook) {
+    await exec(project.onStart, { output: OutputMode.None });
+  }
+
   return session;
 };
 
@@ -92,19 +108,31 @@ const sessionStart = new Command()
   .version("0.0.1")
   .description("Start a working session")
   .option(
+    "-l, --hookless [hookless:boolean]",
+    "Start a session without running the project `onStart` hook"
+  )
+  .option(
     "-p, --project [project:string]",
     "The name of the project to work on"
   )
-  .action(async ({ project: projectName }: { project?: string }) => {
-    const session = await getOngoingSession();
-    if (session != null) {
-      console.log("There is an ongoing session. Did you forget to end it?");
-      return;
-    }
+  .action(
+    async ({
+      project: projectName,
+      hookless,
+    }: {
+      project?: string;
+      hookless: boolean;
+    }) => {
+      const session = await getOngoingSession();
+      if (session != null) {
+        console.log("There is an ongoing session. Did you forget to end it?");
+        return;
+      }
 
-    await createSession(projectName);
-    console.log("Session Started! Get to work!");
-  });
+      await createSession(!hookless, projectName);
+      console.log("Session Started! Get to work!");
+    }
+  );
 
 const sessionEnd = new Command()
   .version("0.0.1")

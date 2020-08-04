@@ -2,7 +2,7 @@ import {
   dim,
   bold,
   underline,
-} from "https://deno.land/std@v0.62.0/fmt/colors.ts";
+} from "https://deno.land/std@0.63.0/fmt/colors.ts";
 
 import { Command } from "https://deno.land/x/cliffy/command.ts";
 import { Select } from "https://deno.land/x/cliffy/prompt.ts";

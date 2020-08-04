@@ -2,9 +2,14 @@ import {
   ensureFile,
   readJson,
   writeJson,
-} from "https://deno.land/std@master/fs/mod.ts";
+} from "https://deno.land/std@0.63.0/fs/mod.ts";
 
-import { styles } from "https://deno.land/x/ansi_styles/mod.ts";
+import {
+  dim,
+  bold,
+  strikethrough,
+  underline,
+} from "https://deno.land/std@0.63.0/fmt/colors.ts";
 
 import { Select, Input } from "https://deno.land/x/cliffy/prompt.ts";
 
@@ -67,6 +72,7 @@ export type Project = {
   workingDir: string;
   tasks: string[];
 
+  onStart?: string;
   github?: string;
 };
 
@@ -288,6 +294,21 @@ export const modifyTaskIndex = async (
   await writeJson(TASKS_INDEX_PATH, index, { spaces: 2 });
 };
 
+export const getProjectTasks = async (
+  projectName: string,
+  shouldIncludeDone: boolean = false
+): Promise<Task[]> => {
+  const {
+    byProject: { [projectName]: projectTasks = [] },
+    incomplete,
+  } = await loadTaskIndex();
+  return await hydrateTasks(
+    shouldIncludeDone
+      ? projectTasks
+      : projectTasks.filter((id) => incomplete.indexOf(id) != -1)
+  );
+};
+
 export const hydrateTasks = async (taskIds: string[]): Promise<Task[]> => {
   return Promise.all(
     taskIds.map((taskId) => {
@@ -320,7 +341,7 @@ export const printTaskGroups = (
   prepend: string = ""
 ): void => {
   for (let key in grouped) {
-    console.log(`${prepend}${styles.bold.open}${key}:${styles.bold.close}`);
+    console.log(`${prepend}${bold(key + ":")}`);
     grouped[key].forEach((task) => printTask(task, prepend + "\t"));
   }
 };
@@ -329,18 +350,14 @@ export const printTask = (
   { isDone, description, created, completed }: Task,
   prepend: string = ""
 ) => {
-  const style = isDone ? styles.strikethrough : styles.underline;
+  const style = isDone ? strikethrough : underline;
   const formattedCompleted = completed
-    ? `\n${prepend}${styles.dim.open}Completed on: ${formatDateTime(
-        completed
-      )}${styles.dim.close}`
+    ? `\n${prepend}${dim(`Completed on: ${formatDateTime(completed)}`)}`
     : "";
   console.log(
-    `${prepend}${style.open}${description}${style.close}\n${prepend}${
-      styles.dim.open
-    }Created on: ${formatDateTime(created)}${
-      styles.dim.close
-    }${formattedCompleted}`
+    `${prepend}${style(description)}\n${prepend}${dim(
+      `Created on: ${formatDateTime(created)}`
+    )}${formattedCompleted}`
   );
 };
 
@@ -402,7 +419,7 @@ export const printSessionGroup = (
   prepend: string = ""
 ): void => {
   for (let key in grouped) {
-    console.log(`${prepend}${styles.bold.open}${key}:${styles.bold.close}`);
+    console.log(`${prepend}${bold(key + ":")}`);
     grouped[key].forEach((session) => printSession(session, prepend + "\t"));
   }
 };
@@ -412,13 +429,11 @@ export const printSession = (
   prepend: string = ""
 ) => {
   console.log(
-    `${prepend}${styles.underline.open}${focus}${
-      styles.underline.close
-    }\n${prepend}${styles.dim.open}Started on: ${
-      styles.dim.close
-    }${formatDateTime(sessionStart)}\n${prepend}${styles.dim.open}Duration: ${
-      styles.dim.close
-    }${formatDuration((sessionEnd ?? Date.now()) - sessionStart)}`
+    `${prepend}${underline(focus)}\n${prepend}${dim(
+      "Started on: "
+    )}${formatDateTime(sessionStart)}\n${prepend}${dim(
+      "Duration: "
+    )}${formatDuration((sessionEnd ?? Date.now()) - sessionStart)}`
   );
 };
 
