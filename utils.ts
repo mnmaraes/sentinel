@@ -421,6 +421,11 @@ export const printSessionGroup = (
   for (let key in grouped) {
     console.log(`${prepend}${bold(key + ":")}`);
     grouped[key].forEach((session) => printSession(session, prepend + "\t"));
+    console.log(
+      `${prepend}\t${dim("Project Total Duration: ")}${formatDuration(
+        sumDuration(grouped[key])
+      )}`
+    );
   }
 };
 
